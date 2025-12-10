@@ -10,9 +10,9 @@ from PyQt5.QtGui import QImage, QPixmap
 class CG4Header:
     def __init__(self, data: bytes):
         if len(data) < 0x30:
-            raise ValueError()
+            raise ValueError('Invalid CG4 file')
         if data[:4] != b'CG4 ':
-            raise ValueError()
+            raise ValueError('Invalid CG4 file')
         self.magic = data[: 0x10]
         self.unk_0 = data[0x10: 0x14]
         self.char_size = int.from_bytes(data[0x14: 0x18], 'little')
@@ -27,9 +27,9 @@ class CG4Header:
 class SC4Header:
     def __init__(self, data: bytes):
         if len(data) < 0x20:
-            raise ValueError()
+            raise ValueError('Invalid SC4 file')
         if data[:4] != b'SC4 ':
-            raise ValueError()
+            raise ValueError('Invalid SC4 file')
         self.magic = data[: 0x10]
         self.unk0 = data[0x10: 0x14]
         self.width = int.from_bytes(data[0x14: 0x16], 'little')
@@ -102,6 +102,30 @@ class BMP:
             self.pixels = np.copy(self.pixels[y:height, x:width])
             self.width = width
             self.height = height
+
+    def unused_color(self):
+        if self.palette is None:
+            return ''
+        used_color = tuple(np.unique(self.pixels).tolist())
+        color_count = len(self.palette.color)
+        prev = -1
+        result = '['
+        for color_id in range(1, color_count):
+            if color_id not in used_color:
+                if prev + 1 == color_id:
+                    if result[-1] != '-':
+                        result = result + '-'
+                    if (color_id + 1 in used_color
+                            or color_id + 1 == color_count):
+                        result = result + f'{color_id}'
+                else:
+                    result = result + f'{color_id}'
+                prev = color_id
+            else:
+                if result[-1] != ' ' and result[-1] != '[':
+                    result = result + ', '
+        result = result + ']\n'
+        return result
 
     def palette_used(self):
         return np.unique((self.pixels // 16))

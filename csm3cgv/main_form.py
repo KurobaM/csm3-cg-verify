@@ -173,13 +173,14 @@ class MainWindow(QWidget):
             self.ui.result.setText(f'Do not found any error')
         diff = ''
         if self.cg4h is not None:
-            diff += (f'Palette: original - {self.cg4h.color_count // 16} used'
-                     f', edited - {len(self.bg.bmp.palette_used())} used\n'
-                     f'Character: original - {self.cg4h.char_count}'
-                     f', edited - {self.bg.bmp.char_count()}\n')
+            diff += (f'Palette: original -> {self.cg4h.color_count // 16} used'
+                     f', edited -> {len(self.bg.bmp.palette_used())} used\n'
+                     f'Character: original -> {self.cg4h.char_count} chars'
+                     f', edited -> {self.bg.bmp.char_count()} chars\n')
         if self.sc4h is not None:
             diff += (
-                f'Actual dimension: {self.sc4h.width}x{self.sc4h.height}\n')
+                f'Actual size: {self.sc4h.width}x{self.sc4h.height}\n')
+        diff += f'Unused colors: {self.bg.bmp.unused_color()}'
         self.ui.diff.setText(diff)
 
     def set_zoom(self, value: int):
@@ -203,8 +204,8 @@ class MainWindow(QWidget):
                 bmp = BMP(path, self.palette_data)
             else:
                 bmp = BMP(path)
-        except Exception:
-            self.ui.bmp.setText(traceback.format_exc())
+        except Exception as e:
+            self.ui.bmp.setText(str(e))
         else:
             self.bg.set_bitmap(bmp)
             self.working_dir = os.path.dirname(path)
@@ -229,8 +230,8 @@ class MainWindow(QWidget):
                 self.bg.bmp.set_palette(pal, self.ui.override.isChecked())
             self.palette_data = pal
             self.ui.pal.setText(path)
-        except Exception:
-            self.ui.pal.setText(traceback.format_exc())
+        except Exception as e:
+            self.ui.pal.setText(str(e))
 
     def load_cg4(self):
         if self.working_dir is None:
@@ -246,8 +247,8 @@ class MainWindow(QWidget):
                 data = f.read()
             self.cg4h = CG4Header(data)
             self.ui.cg4.setText(path)
-        except Exception:
-            self.ui.cg4.setText(traceback.format_exc())
+        except Exception as e:
+            self.ui.cg4.setText(str(e))
 
     def load_sc4(self):
         if self.working_dir is None:
@@ -263,5 +264,5 @@ class MainWindow(QWidget):
                 data = f.read()
             self.sc4h = SC4Header(data)
             self.ui.sc4.setText(path)
-        except Exception:
-            self.ui.sc4.setText(traceback.format_exc())
+        except Exception as e:
+            self.ui.sc4.setText(str(e))
