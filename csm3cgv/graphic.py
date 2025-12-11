@@ -171,6 +171,35 @@ class BMP:
                     err.append((count_err, (x, y), pal_err))
         return err
 
+    def generate_palette_bmp(self):
+        if self.img is None:
+            self.img = self.create_image()
+        pal_img = np.copy(self.img)
+        print(pal_img)
+        for y in range(0, self.height, 8):
+            for x in range(0, self.width, 8):
+                tile = self.pixels[y:y+8, x:x+8]
+                colors = np.unique(tile)
+                if len(colors) > 16:
+                    raise ValueError('Tile has >16 colors at' + str(x) + ", " + str(y))
+                print(colors)
+                for xi in range(8):
+                    for yi in range(8):
+                        c = colors[0]
+                        if len(colors) > (xi//2) + ((yi//2)*2):
+                            c = colors[(xi//2) + ((yi//2)*2)]
+                        pal_img[y+yi,x+xi] = self.palette.color[c]
+                # for xi in range(4):
+                #     for yi in range(4):
+                #         c = colors[0]
+                #         if xi+4*yi < len(colors):
+                #             c = colors[xi+4*yi]
+                #         pal_img[y+yi*2:y+yi*2+1, x+xi*2:x+xi*2+1] = c
+
+        output_pixels = pal_img
+        return output_pixels
+
+
     def create_image(self):
         if self.palette is None:
             raise ValueError('No Palette')
@@ -191,6 +220,7 @@ class BMP:
         red = 0xff0000ff
         green = 0xff00ff00
         blue = 0xffff0000
+        print(img)
         for e in self.error:
             redraw = True
             major_color = red
