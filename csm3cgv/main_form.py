@@ -91,6 +91,7 @@ class MainWindow(QWidget):
         self.ui.preview.clicked.connect(self.view_bmp)
         self.ui.verify.clicked.connect(self.verify)
         self.ui.export_err_img.clicked.connect(self.export_error_img)
+        self.ui.export_pal_img.clicked.connect(self.export_palette_img)
         self.bg.pos_clicked.connect(self.show_coordinate)
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
@@ -139,6 +140,27 @@ class MainWindow(QWidget):
                 self.ui.result.setText('Failed to save mask file')
         except Exception:
             self.ui.result.setText(traceback.format_exc())
+
+    def export_palette_img(self):
+        if self.bg.bmp is None:
+            return
+        if self.working_dir is None:
+            folder = os.path.dirname(__file__)
+        else:
+            folder = self.working_dir
+        try:
+            mask = self.bg.bmp.generate_palette_bmp()
+            img = QImage(mask.tobytes(), self.bg.bmp.width, self.bg.bmp.height,
+                         QImage.Format.Format_RGBA8888)
+            path, _ = QFileDialog.getSaveFileName(
+                self, 'Save PNG', folder, 'PNG image (*.png)')
+            if img.save(path, 'PNG'):
+                self.ui.result.setText('Palette file saved successfully')
+            else:
+                self.ui.result.setText('Failed to save palette file')
+        except Exception:
+            self.ui.result.setText(traceback.format_exc())
+
 
     def show_coordinate(self, pos: tuple[int, int]):
         self.ui.point.setText(f'X={pos[0]}, Y={pos[1]}')
