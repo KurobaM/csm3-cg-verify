@@ -2,87 +2,45 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from __future__ import annotations
-from enum import Enum
 import json
 import os
 import traceback
 
-from PyQt5.QtCore import pyqtSignal
+import numpy as np
 from PyQt5.QtGui import QCloseEvent, QImage
-from PyQt5.QtWidgets import (QWidget, QGraphicsScene, QGraphicsSceneMouseEvent,
-                             QGraphicsPixmapItem, QFileDialog)
+from PyQt5.QtWidgets import (QWidget, QFileDialog)
 
-from .graphic import Palette, BMP, CG4Header, SC4Header
+from .graphic import Palette, BMP, CG4Header, SC4Header,  BGLayer
 from .main_ui import Ui_Form
-
-
-class Mode(Enum):
-    INIT = 0
-    IMG_VIEW = 1
-    ERR_VIEW = 2
-
-
-class BGLayer(QGraphicsScene):
-    pos_clicked = pyqtSignal(tuple)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.item = QGraphicsPixmapItem()
-        self.bmp = None
-        self.mode = Mode.INIT
-        self.addItem(self.item)
-        self.zoom_factor = 1
-
-    def set_bitmap(self, bmp: BMP):
-        self.bmp = bmp
-
-    def set_image(self):
-        self.mode = Mode.IMG_VIEW
-        if self.bmp is not None:
-            self.item.setPixmap(self.bmp.generate_pixmap(self.zoom_factor))
-
-    def set_error_image(self):
-        self.mode = Mode.ERR_VIEW
-        if self.bmp is not None:
-            self.item.setPixmap(
-                self.bmp.generate_error_pixmap(self.zoom_factor))
-
-    def update_zoom(self, zoom_factor: int):
-        self.zoom_factor = zoom_factor
-        if self.mode is Mode.IMG_VIEW:
-            self.set_image()
-        elif self.mode is Mode.ERR_VIEW:
-            self.set_error_image()
-
-    def mousePressEvent(self, event: QGraphicsSceneMouseEvent | None) -> None:
-        super().mousePressEvent(event)
-        if event is not None and self.bmp is not None:
-            point = self.item.mapFromScene(event.scenePos())
-            x = int(point.x()) // self.zoom_factor
-            y = int(point.y()) // self.zoom_factor
-            if 0 <= x <= self.bmp.width and 0 <= y <= self.bmp.height:
-                self.pos_clicked.emit((x, y))
+from .model import ColorTableModel, CharDetailModel, PaletteTable
 
 
 class MainWindow(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.bg = BGLayer()
+        # member
         self.ui = Ui_Form()
+        self.ui.setupUi(self)
+        self.bg = BGLayer()
         self.palette_data = None
         self.cg4h = None
         self.sc4h = None
-        self.working_dir = self.load_config()
-        self.ui.setupUi(self)
-        self.ui.frame_orig_file.setVisible(False)
-        self.ui.frame_pal.setVisible(False)
+        self.working_dir, self.orig_dir = self.load_config()
         self.zoom_factor = 1
-        self.ui.zoom.setMaximum(16)
-        self.ui.zoom.setMinimum(1)
-        self.ui.zoom.setValue(self.zoom_factor)
-        self.ui.zoom.setSingleStep(1)
-        self.ui.graphic_view.setScene(self.bg)
-        self.ui.diff.setWordWrap(True)
+        self.selected_char = None
+        self.selected_color: tuple[int, int] | None = None
+        self.pal_model = ColorTableModel(None)
+        self.char_model = CharDetailModel(None)
+        self.ui.tbl_pal.setModel(self.pal_model)
+        self.ui.tbl_char.setModel(self.char_model)
+        # ui
+        self.ui_setup()
+        # signal
+        self.ui.replace.returnPressed.connect(self.char_pixel_replace)
+        self.ui.apply_btn.clicked.connect(self.apply_char_change)
+        self.ui.set_color.returnPressed.connect(self.change_color)
+        self.ui.btn_save.clicked.connect(self.save_img)
+        self.ui.tbl_pal.color_clicked.connect(self.color_selected)
         self.ui.zoom.valueChanged.connect(self.set_zoom)
         self.ui.load_bmp.clicked.connect(self.load_bmp)
         self.ui.load_cg4.clicked.connect(self.load_cg4)
@@ -91,22 +49,33 @@ class MainWindow(QWidget):
         self.ui.preview.clicked.connect(self.view_bmp)
         self.ui.verify.clicked.connect(self.verify)
         self.ui.export_err_img.clicked.connect(self.export_error_img)
-        self.bg.pos_clicked.connect(self.show_coordinate)
+        self.bg.pos_clicked.connect(self.show_coordinate_and_char)
 
-    def closeEvent(self, a0: QCloseEvent | None) -> None:
+    def ui_setup(self):
+        self.ui.frame_orig_file.setVisible(False)
+        self.ui.frame_pal.setVisible(False)
+        self.ui.zoom.setMaximum(16)
+        self.ui.zoom.setMinimum(1)
+        self.ui.zoom.setValue(self.zoom_factor)
+        self.ui.zoom.setSingleStep(1)
+        self.ui.graphic_view.setScene(self.bg)
+        self.ui.diff.setWordWrap(True)
+
+    def closeEvent(self, event: QCloseEvent | None) -> None:  # type: ignore
         self.save_config()
-        return super().closeEvent(a0)
+        return super().closeEvent(event)  # type: ignore
 
     def load_config(self):
         try:
             with open(os.path.join(os.path.dirname(__file__), 'config.json'),
                       'r', encoding='utf-8') as file:
                 config = json.load(file)
-                if os.path.isdir(config['working_dir']):
-                    return config['working_dir']
-                return None
+                if (os.path.isdir(config['working_dir'])
+                        and os.path.isdir(config['orig_dir'])):
+                    return config['working_dir'], config['orig_dir']
+                return None, None
         except Exception:
-            return None
+            return None, None
 
     def save_config(self):
         if self.working_dir is None:
@@ -114,6 +83,7 @@ class MainWindow(QWidget):
         try:
             config = dict()
             config['working_dir'] = self.working_dir
+            config['orig_dir'] = self.orig_dir
             with open(os.path.join(os.path.dirname(__file__), 'config.json'),
                       'w', encoding='utf-8') as file:
                 json.dump(config, file)
@@ -140,13 +110,105 @@ class MainWindow(QWidget):
         except Exception:
             self.ui.result.setText(traceback.format_exc())
 
-    def show_coordinate(self, pos: tuple[int, int]):
+    def save_img(self):
+        if self.bg.bmp is None:
+            return
+        if self.working_dir is None:
+            folder = os.path.dirname(__file__)
+        else:
+            folder = self.working_dir
+        try:
+            path, _ = QFileDialog.getSaveFileName(
+                self, 'Save BMP', folder, 'BMP image (*.bmp)')
+            self.bg.bmp.save(path)
+            self.ui.result.setText('Image saved successfully')
+        except Exception:
+            self.ui.result.setText(traceback.format_exc())
+
+    def show_coordinate_and_char(self, pos: tuple[int, int]):
         self.ui.point.setText(f'X={pos[0]}, Y={pos[1]}')
+        if not self.bg.bmp:
+            return
+        h, w = self.bg.bmp.pixels.shape
+        if pos[0] < w and pos[1] < h:
+            y = pos[1] // 8 * 8
+            x = pos[0] // 8 * 8
+            char = self.bg.bmp.pixels[y:y+8, x:x+8]
+            self.selected_char = (x, y)
+            self.char_model.update(char)
+            self.ui.label_char.setText(
+                f'Selected character: {x // 8 + y // 8 * w // 8}')
+            self.ui.label_char_pm.setPixmap(
+                self.bg.bmp.generate_char_pixmap(x, y, 6))
+
+    def char_pixel_replace(self):
+        if self.char_model.char is None or self.bg.bmp is None:
+            return
+        try:
+            s_pair = [x.strip().split('=')
+                      for x in self.ui.replace.text().split(',') if x.strip()]
+            values = []
+            for x in s_pair:
+                k = x[0].strip()
+                v = x[1].strip()
+                if not k or not v:
+                    continue
+                try:
+                    values.append((int(k), int(v)))
+                except ValueError:
+                    pass
+            if self.ui.checkBox.isChecked():
+                for k, v in values:
+                    try:
+                        self.bg.bmp.pixels[
+                            self.bg.bmp.pixels == np.uint8(k)] = np.uint8(v)
+                    except Exception:
+                        pass
+            else:
+                self.char_model.replace(values)
+        except Exception:
+            pass
+
+    def apply_char_change(self):
+        char = self.char_model.char
+        if char is None or not self.bg.bmp or not self.selected_char:
+            return
+        x, y = self.selected_char
+        self.bg.bmp.pixels[y: y+8, x: x+8] = char
+        self.bg.bmp.img = None
+        self.bg.bmp.error_img = None
+        self.bg.bmp.charset = None
+        self.bg.bmp.error = None
+        self.view_bmp()
+        self.verify()
+
+    def change_color(self):
+        if not self.selected_color:
+            return
+        if not self.bg.bmp or not self.bg.bmp.palette:
+            return
+        try:
+            r, g, b = (int(s.strip()) & 0xff
+                       for s in self.ui.set_color.text().split(','))
+            index = self.selected_color[0]
+            self.bg.bmp.palette.color[index] = np.uint32(
+                r | g << 8 | b << 16 | 0xff << 24)
+            self.bg.bmp.img = None
+            self.view_bmp()
+        except Exception:
+            pass
+
+    def color_selected(self, value: tuple[int, int]):
+        self.selected_color = value
+        r, g, b, _ = (x for x in int.to_bytes(int(value[1]), 4, 'little'))
+        self.ui.label_color.setText(
+            f'Selected color: idx={value[0]}   R={r}    G={g}   B={b})')
 
     def view_bmp(self):
         if self.bg.bmp is not None:
             try:
                 self.bg.set_image()
+                self.pal_model.update(self.bg.bmp.palette)
             except Exception:
                 self.ui.result.setText(traceback.format_exc())
 
@@ -167,7 +229,7 @@ class MainWindow(QWidget):
         if err:
             self.ui.result.setText(
                 f'Found {len(err)} character(s) with error.\n'
-                'R: >16 colors, G: only have palette error, '
+                'R: >16 colors, G: only have palette error, \n'
                 'B: pixels of minor color palettes')
         else:
             self.ui.result.setText(f'Do not found any error')
@@ -200,6 +262,7 @@ class MainWindow(QWidget):
         if not os.path.isfile(path):
             return
         try:
+            self.working_dir = os.path.dirname(path)
             if self.palette_data is not None:
                 bmp = BMP(path, self.palette_data)
             else:
@@ -234,15 +297,16 @@ class MainWindow(QWidget):
             self.ui.pal.setText(str(e))
 
     def load_cg4(self):
-        if self.working_dir is None:
+        if self.orig_dir is None:
             folder = os.path.dirname(__file__)
         else:
-            folder = self.working_dir
+            folder = self.orig_dir
         path, _ = QFileDialog.getOpenFileName(
             self, 'Open CG4', folder, 'All (*)')
         if not os.path.isfile(path):
             return
         try:
+            self.orig_dir = os.path.dirname(path)
             with open(path, 'rb') as f:
                 data = f.read()
             self.cg4h = CG4Header(data)
@@ -251,15 +315,16 @@ class MainWindow(QWidget):
             self.ui.cg4.setText(str(e))
 
     def load_sc4(self):
-        if self.working_dir is None:
+        if self.orig_dir is None:
             folder = os.path.dirname(__file__)
         else:
-            folder = self.working_dir
+            folder = self.orig_dir
         path, _ = QFileDialog.getOpenFileName(
             self, 'Open SC4', folder, 'All (*)')
         if not os.path.isfile(path):
             return
         try:
+            self.orig_dir = os.path.dirname(path)
             with open(path, 'rb') as f:
                 data = f.read()
             self.sc4h = SC4Header(data)

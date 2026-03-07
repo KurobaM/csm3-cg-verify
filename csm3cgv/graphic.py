@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from __future__ import annotations
+from enum import Enum
+
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import (
+    QGraphicsPixmapItem, QGraphicsScene, QGraphicsSceneMouseEvent)
 import numpy as np
 from PIL import Image
-from PyQt5.QtGui import QImage, QPixmap
 
 
 class CG4Header:
@@ -34,7 +39,8 @@ class SC4Header:
         self.unk0 = data[0x10: 0x14]
         self.width = int.from_bytes(data[0x14: 0x16], 'little')
         self.height = int.from_bytes(data[0x16: 0x18], 'little')
-        self.unk1 = data[0x18: 0x20]
+        self.size = data[0x18: 0x1a]
+        self.unk1 = data[0x1a: 0x20]
 
 
 class Palette:
@@ -49,6 +55,14 @@ class Palette:
         return [(0xff << 24)
                 + sum([(x[i] & 0xff) << (8 * i) for i in range(0, 3)])
                 for x in colors]
+
+    def to_PIL_palette(self):
+        out: list[int] = []
+        for color in self.color:
+            r, g, b, _ = (x for x in int.to_bytes(int(color), 4, 'little'))
+            out.extend([r, g, b])
+        out.extend([0] * (768 - len(out)))
+        return out
 
     @classmethod
     def from_pal_file(cls, data: bytes):
@@ -66,26 +80,33 @@ def zoom(data_2d, factor):
 
 class BMP:
     def __init__(self, path: str, palette: Palette | None = None) -> None:
-        self._img = Image.open(path)
-        if self._img.format != 'BMP':
-            raise ValueError(f'Format not supported: {self._img.format}')
-        self.width = self._img.width
-        self.height = self._img.height
-        if self._img.mode == 'P':
-            self.pixels = np.array(self._img.getdata()
-                                   ).reshape((self.height, self.width))
-            pal = self._img.getpalette()
-            if pal is None:
-                self.palette = palette
+        with Image.open(path) as img:
+            if img.format != 'BMP':
+                raise ValueError(f'Format not supported: {img.format}')
+            self.width = img.width
+            self.height = img.height
+            if img.mode == 'P':
+                self.pixels = np.array(img.getdata(), dtype=np.uint8
+                                       ).reshape((self.height, self.width))
+                pal = img.getpalette()
+                if pal is None:
+                    self.palette = palette
+                else:
+                    self.palette = Palette(pal)
             else:
-                self.palette = Palette(pal)
-        else:
-            raise NotImplementedError(
-                f'Bitmap mode not supported: {self._img.mode}')
+                raise NotImplementedError(
+                    f'Bitmap mode not supported: {img.mode}')
         self.charset = None
         self.img = None
         self.error = None
         self.error_img = None
+
+    def save(self, path):
+        if self.palette is None:
+            raise ValueError()
+        img = Image.fromarray(self.pixels).convert('P')
+        img.putpalette(self.palette.to_PIL_palette())
+        img.save(path, 'BMP')
 
     def set_palette(self, palette: Palette, override=False):
         if self.palette is not None:
@@ -185,6 +206,18 @@ class BMP:
                      QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(img)
 
+    def get_char(self, x: int, y: int):
+        return self.pixels[y:y+8, x:x+8]
+
+    def generate_char_pixmap(self, x: int, y: int, zoom_factor: int):
+        if self.palette is None:
+            raise ValueError('No Palette')
+        img = self.palette.color[self.get_char(x, y)]
+        zoomed = zoom(img, zoom_factor)
+        qimg = QImage(zoomed.tobytes(), 8 * zoom_factor, 8 * zoom_factor,
+                      QImage.Format.Format_RGBA8888)
+        return QPixmap.fromImage(qimg)
+
     def draw_error(self, img: np.ndarray):
         if self.error is None:
             self.error = self.generate_error_map()
@@ -230,3 +263,51 @@ class BMP:
                      self.height * zoom_factor,
                      QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(img)
+
+
+class Mode(Enum):
+    INIT = 0
+    IMG_VIEW = 1
+    ERR_VIEW = 2
+
+
+class BGLayer(QGraphicsScene):
+    pos_clicked = pyqtSignal(tuple)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.item = QGraphicsPixmapItem()
+        self.bmp = None
+        self.mode = Mode.INIT
+        self.addItem(self.item)
+        self.zoom_factor = 1
+
+    def set_bitmap(self, bmp: BMP):
+        self.bmp = bmp
+
+    def set_image(self):
+        self.mode = Mode.IMG_VIEW
+        if self.bmp is not None:
+            self.item.setPixmap(self.bmp.generate_pixmap(self.zoom_factor))
+
+    def set_error_image(self):
+        self.mode = Mode.ERR_VIEW
+        if self.bmp is not None:
+            self.item.setPixmap(
+                self.bmp.generate_error_pixmap(self.zoom_factor))
+
+    def update_zoom(self, zoom_factor: int):
+        self.zoom_factor = zoom_factor
+        if self.mode is Mode.IMG_VIEW:
+            self.set_image()
+        elif self.mode is Mode.ERR_VIEW:
+            self.set_error_image()
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent | None) -> None:
+        super().mousePressEvent(event)  # type: ignore
+        if event is not None and self.bmp is not None:
+            point = self.item.mapFromScene(event.scenePos())
+            x = int(point.x()) // self.zoom_factor
+            y = int(point.y()) // self.zoom_factor
+            if 0 <= x < self.bmp.width and 0 <= y < self.bmp.height:
+                self.pos_clicked.emit((x, y))
