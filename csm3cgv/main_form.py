@@ -7,12 +7,14 @@ import os
 import traceback
 
 import numpy as np
-from PyQt5.QtGui import QCloseEvent, QImage
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QCloseEvent, QImage, QKeyEvent
 from PyQt5.QtWidgets import (QWidget, QFileDialog)
 
-from .graphic import Palette, BMP, CG4Header, SC4Header,  BGLayer
+from .graphic import (Palette, BMP, CG4Header, SC4Header,
+                      BGLayer, to_color16, to_color32)
 from .main_ui import Ui_Form
-from .model import ColorTableModel, CharDetailModel, PaletteTable
+from .model import ColorTableModel, CharDetailModel
 
 
 class MainWindow(QWidget):
@@ -25,6 +27,7 @@ class MainWindow(QWidget):
         self.palette_data = None
         self.cg4h = None
         self.sc4h = None
+        self.bmp_o = None
         self.working_dir, self.orig_dir = self.load_config()
         self.zoom_factor = 1
         self.selected_char = None
@@ -43,6 +46,7 @@ class MainWindow(QWidget):
         self.ui.tbl_pal.color_clicked.connect(self.color_selected)
         self.ui.zoom.valueChanged.connect(self.set_zoom)
         self.ui.load_bmp.clicked.connect(self.load_bmp)
+        self.ui.load_bmp_o.clicked.connect(self.load_bmp_o)
         self.ui.load_cg4.clicked.connect(self.load_cg4)
         self.ui.load_sc4.clicked.connect(self.load_sc4)
         self.ui.load_pal.clicked.connect(self.load_pal)
@@ -50,6 +54,7 @@ class MainWindow(QWidget):
         self.ui.verify.clicked.connect(self.verify)
         self.ui.export_err_img.clicked.connect(self.export_error_img)
         self.bg.pos_clicked.connect(self.show_coordinate_and_char)
+        self.ui.copy.returnPressed.connect(self.copy_from_original)
 
     def ui_setup(self):
         self.ui.frame_orig_file.setVisible(False)
@@ -141,6 +146,39 @@ class MainWindow(QWidget):
             self.ui.label_char_pm.setPixmap(
                 self.bg.bmp.generate_char_pixmap(x, y, 6))
 
+    def copy_from_original(self):
+        if not self.bg.bmp or not self.bmp_o:
+            return
+        try:
+            char = []
+            s_char = [x.strip()
+                      for x in self.ui.copy.text().split(',') if x.strip()]
+            for v in s_char:
+                if '-' in v:
+                    s_start, s_end = [x.strip() for x in v.split('-')]
+                    char.extend([x for x in range(int(s_start), int(s_end)+1)])
+                else:
+                    char.append(int(v))
+
+            h, w = self.bmp_o.pixels.shape
+            char_max = h // 8 * w // 8 - 1
+            for c in char:
+                if c > char_max:
+                    continue
+                y = c // (w // 8) * 8
+                x = c % (w // 8) * 8
+                pixels = self.bmp_o.pixels[y:y+8, x:x+8]
+                self.bg.bmp.pixels[y:y+8, x:x+8] = pixels
+
+            self.bg.bmp.img = None
+            self.bg.bmp.error_img = None
+            self.bg.bmp.charset = None
+            self.bg.bmp.error = None
+            self.view_bmp()
+            self.verify()
+        except Exception:
+            pass
+
     def char_pixel_replace(self):
         if self.char_model.char is None or self.bg.bmp is None:
             return
@@ -199,10 +237,42 @@ class MainWindow(QWidget):
             pass
 
     def color_selected(self, value: tuple[int, int]):
+        if not self.bg.bmp or not self.bg.bmp.palette:
+            return
         self.selected_color = value
+
+        lsb = self.ui.spin_lsb.value()
+        if lsb == 0:
+            map = self.bg.bmp.palette.color_map
+            idx = value[1]
+        else:
+            map: dict[int, set[int]] = dict()
+            mask_5b = ((0x1f - (1 << lsb) + 1)
+                       | (0x1f - (1 << lsb) + 1) << 5
+                       | (0x1f - (1 << lsb) + 1) << 10)
+            idx = to_color16(value[1]) & mask_5b
+            map: dict[int, set[int]] = dict()
+            for k, v in self.bg.bmp.palette.color_map.items():
+                k_shift = to_color16(k) & mask_5b
+                if k_shift not in map:
+                    map[k_shift] = set()
+                map[k_shift].update(v)
+
         r, g, b, _ = (x for x in int.to_bytes(int(value[1]), 4, 'little'))
+        r5 = round(r * 0x1f / 0xff)
+        g5 = round(g * 0x1f / 0xff)
+        b5 = round(b * 0x1f / 0xff)
+        similar = sorted(list(map[idx]))
+        similar = [similar[x: x + 10] for x in range(0, len(similar), 10)]
+        lines = []
+        for line in similar:
+            lines.append(', '.join([str(x) for x in line]) + ',')
+        similar_s = '{'+'\n         '.join(lines) + '}'
+
         self.ui.label_color.setText(
-            f'Selected color: idx={value[0]}   R={r}    G={g}   B={b})')
+            f'Selected color: idx={value[0]}, '
+            f'R={r}({r5}), G={g}({g5}), B={b}({b5})\n'
+            f'Similar: {similar_s}')
 
     def view_bmp(self):
         if self.bg.bmp is not None:
@@ -276,6 +346,23 @@ class MainWindow(QWidget):
             self.ui.width.setText(str(bmp.width))
             self.ui.height.setText(str(bmp.height))
 
+    def load_bmp_o(self):
+        if self.working_dir is None:
+            folder = os.path.dirname(__file__)
+        else:
+            folder = self.working_dir
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Open BMP', folder, 'Image (*.bmp)')
+        if not os.path.isfile(path):
+            return
+        try:
+            self.working_dir = os.path.dirname(path)
+            self.bmp_o = BMP(path)
+        except Exception as e:
+            self.ui.bmp.setText(str(e))
+        else:
+            self.ui.bmp_o.setText(path)
+
     def load_pal(self):
         if self.working_dir is None:
             folder = os.path.dirname(__file__)
@@ -331,3 +418,10 @@ class MainWindow(QWidget):
             self.ui.sc4.setText(path)
         except Exception as e:
             self.ui.sc4.setText(str(e))
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore
+        if event.key() == Qt.Key.Key_F4:
+            self.char_pixel_replace()
+            self.apply_char_change()
+            return event.accept()
+        return super().keyPressEvent(event)

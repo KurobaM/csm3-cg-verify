@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>900</width>
-    <height>481</height>
+    <height>540</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -30,8 +30,17 @@
        <enum>QFrame::Box</enum>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_5">
+       <property name="leftMargin">
+        <number>2</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>2</number>
+       </property>
        <property name="bottomMargin">
-        <number>10</number>
+        <number>0</number>
        </property>
        <item>
         <widget class="QLabel" name="label_3">
@@ -113,6 +122,44 @@
                </item>
               </layout>
              </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_14">
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QPushButton" name="load_bmp_o">
+                 <property name="text">
+                  <string>Load original BMP</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="bmp_o"/>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_15">
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="label_8">
+                 <property name="text">
+                  <string>Copy char from original</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="copy">
+                 <property name="placeholderText">
+                  <string>id_x, id_y - id_z, ...</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
             </layout>
            </widget>
           </item>
@@ -129,6 +176,12 @@
              <bool>true</bool>
             </property>
             <layout class="QGridLayout" name="gridLayout">
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
              <item row="0" column="0">
               <widget class="QPushButton" name="load_pal">
                <property name="text">
@@ -360,8 +413,17 @@ p, li { white-space: pre-wrap; }
        <enum>QFrame::Plain</enum>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
        <property name="bottomMargin">
-        <number>10</number>
+        <number>0</number>
        </property>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_6">
@@ -469,8 +531,17 @@ p, li { white-space: pre-wrap; }
         <enum>QFrame::Box</enum>
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_8">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
         <property name="topMargin">
-         <number>1</number>
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>9</number>
         </property>
         <item>
          <widget class="QLabel" name="label_4">
@@ -504,7 +575,24 @@ p, li { white-space: pre-wrap; }
           <item>
            <widget class="QLineEdit" name="set_color">
             <property name="placeholderText">
-             <string>R, G, B    Example: 128, 0, 255</string>
+             <string>R, G, B    Ex: 128, 0, 255</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_6">
+            <property name="toolTip">
+             <string>When find similar color</string>
+            </property>
+            <property name="text">
+             <string>Ignore LSB</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spin_lsb">
+            <property name="maximum">
+             <number>4</number>
             </property>
            </widget>
           </item>
@@ -518,10 +606,16 @@ p, li { white-space: pre-wrap; }
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_9">
         <property name="leftMargin">
-         <number>1</number>
+         <number>0</number>
         </property>
         <property name="topMargin">
          <number>1</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
         </property>
         <item>
          <widget class="QLabel" name="label_char">
@@ -548,7 +642,7 @@ p, li { white-space: pre-wrap; }
           <item>
            <widget class="QLineEdit" name="replace">
             <property name="placeholderText">
-             <string>value1=value2, ...</string>
+             <string>value_old=value_new, ...   (F4 hot key)</string>
             </property>
            </widget>
           </item>

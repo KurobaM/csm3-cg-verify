@@ -12,6 +12,21 @@ import numpy as np
 from PIL import Image
 
 
+def to_color32(value: int):
+    r = round((value & 0x1f) * 0xff / 0x1f)
+    g = round((value >> 5 & 0x1f) * 0xff / 0x1f)
+    b = round((value >> 10 & 0x1f) * 0xff / 0x1f)
+    a = 0xff
+    return r | g << 8 | b << 16 | a << 24
+
+
+def to_color16(value: int):
+    r = round((value & 0xff) * 0x1f / 0xff)
+    g = round((value >> 8 & 0xff) * 0x1f / 0xff)
+    b = round((value >> 16 & 0xff) * 0x1f / 0xff)
+    return r | g << 5 | b << 10
+
+
 class CG4Header:
     def __init__(self, data: bytes):
         if len(data) < 0x30:
@@ -49,12 +64,22 @@ class Palette:
             self.color = np.array(self._to_color32(color_8bpp), np.uint32)
         else:
             self.color = np.array(color_8bpp, np.uint32)
+        self.color_map = self.generate_color_map()
 
     def _to_color32(self, data: list[int]):
         colors = [data[i:i+3] for i in range(0, len(data), 3)]
         return [(0xff << 24)
                 + sum([(x[i] & 0xff) << (8 * i) for i in range(0, 3)])
                 for x in colors]
+
+    def generate_color_map(self):
+        map: dict[int, set[int]] = dict()
+        for i, v in enumerate(self.color):
+            color = int(v)
+            if color not in map:
+                map[color] = set()
+            map[color].add(i)
+        return map
 
     def to_PIL_palette(self):
         out: list[int] = []
