@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 from enum import Enum
+import hashlib
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
@@ -103,6 +104,91 @@ def zoom(data_2d, factor):
     return scaled_arr.astype(dtype)
 
 
+class BGChar:
+    def __init__(self, data: bytes, pal256: bool = False):
+        if pal256:
+            self.size = 0x40
+        else:
+            self.size = 0x20
+        self.pal256 = pal256
+        if len(data) != self.size:
+            raise ValueError('Invalid data size')
+        self.data_2d = np.array(self._parse(
+            data), dtype=np.uint8).reshape(8, 8)
+        self._palette: int = 0
+
+    def _parse(self, data: bytes) -> list[int]:
+        out: list[int] = []
+        if not self.pal256:
+            for x in data:
+                out.append(x & 0xf)
+                out.append(x >> 4)
+        else:
+            for x in data:
+                out.append(x)
+        return out
+
+    @classmethod
+    def from_PIL_list(cls, pixels: list[int], pal256: bool = False):
+        if len(pixels) != 8 * 8:
+            raise ValueError('Char must be 8x8 pixels')
+        obj = cls.__new__(cls)
+        obj.pal256 = pal256
+        obj._palette = 0
+        shift = False
+        if pal256:
+            obj.size = 0x40
+        else:
+            obj.size = 0x20
+            for v in pixels:
+                if v > 0xf:
+                    shift = True
+                    break
+        data = np.array(pixels, dtype=np.uint8)
+        if shift:
+            pal_set: set[int] = set((data // 16).tolist())
+            if len(pal_set) != 1:
+                raise ValueError(
+                    'Invalid 16 color character (more than 1 palette)')
+            obj._palette = pal_set.pop()
+            data = data - 16 * obj._palette
+        obj.data_2d = data.reshape(8, 8)
+        return obj
+
+    @property
+    def hflip(self):
+        return np.flip(self.data_2d, axis=1)
+
+    @property
+    def vflip(self):
+        return np.flip(self.data_2d, axis=0)
+
+    @property
+    def hvflip(self):
+        return np.flip(self.data_2d, axis=(0, 1))
+
+    def get_2d(self, flip: tuple[bool, bool]) -> np.ndarray:
+        if not flip[0] and not flip[1]:
+            return self.data_2d
+        if flip[0] and not flip[1]:
+            return self.hflip
+        elif not flip[0] and flip[1]:
+            return self.vflip
+        else:
+            return self.hvflip
+
+    def to_bytes(self, flip: tuple[bool, bool]):
+        data = self.get_2d(flip).flatten()
+        if self.pal256:
+            return data.tobytes()
+        else:
+            packed = (data[1::2] << 4) | (data[::2] & 0x0f)
+            return packed.tobytes()
+
+    def hash(self, flip: tuple[bool, bool]):
+        return hashlib.sha256(self.to_bytes(flip)).hexdigest()
+
+
 class BMP:
     def __init__(self, path: str, palette: Palette | None = None) -> None:
         with Image.open(path) as img:
@@ -121,7 +207,7 @@ class BMP:
             else:
                 raise NotImplementedError(
                     f'Bitmap mode not supported: {img.mode}')
-        self.charset = None
+        self.charset: dict[str, tuple[int, int, int]] | None = None
         self.img = None
         self.error = None
         self.error_img = None
@@ -179,13 +265,32 @@ class BMP:
     def char_count(self):
         if self.charset is not None:
             return len(self.charset)
-        self.charset = set()
+        self.charset = dict()
+        chars = []
         for y in range(0, self.height, 8):
             for x in range(0, self.width, 8):
-                self.charset.add(
-                    tuple(self.pixels[y:y+8, x:x+8].flatten().tolist())
-                )
-        return len(self.charset)
+                chars.append(BGChar.from_PIL_list(
+                    self.pixels[y:y+8, x:x+8].flatten().tolist()))
+        for char in chars:
+            n_hash = char.hash((False, False))
+            h_hash = char.hash((True, False))
+            v_hash = char.hash((False, True))
+            hv_hash = char.hash((True, True))
+            if n_hash in self.charset:
+                continue
+            elif h_hash in self.charset:
+                continue
+            elif v_hash in self.charset:
+                continue
+            elif hv_hash in self.charset:
+                continue
+            else:
+                self.charset[n_hash] = (char, 0, 0)
+                self.charset[h_hash] = (char, 1, 0)
+                self.charset[v_hash] = (char, 0, 1)
+                self.charset[hv_hash] = (char, 1, 1)
+
+        return len(self.charset) // 4
 
     def check_color_count(self, char: np.ndarray) -> bool:
         return len(set(char.flatten().tolist())) > 16
