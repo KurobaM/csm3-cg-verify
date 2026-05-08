@@ -11,10 +11,17 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QCloseEvent, QImage, QKeyEvent
 from PyQt5.QtWidgets import (QWidget, QFileDialog)
 
-from .graphic import (Palette, BMP, CG4Header, SC4Header,
-                      BGLayer, to_color16, to_color32)
-from .main_ui import Ui_Form
-from .model import ColorTableModel, CharDetailModel
+
+try:
+    from .graphic import (Palette, BMP, CG4Header, SC4Header,
+                          BGLayer, to_color16, to_color32)
+    from .main_ui import Ui_Form
+    from .model import ColorTableModel, CharDetailModel
+except ImportError:
+    from graphic import (Palette, BMP, CG4Header, SC4Header,
+                          BGLayer, to_color16, to_color32)
+    from main_ui import Ui_Form
+    from model import ColorTableModel, CharDetailModel
 
 
 class MainWindow(QWidget):
@@ -52,6 +59,7 @@ class MainWindow(QWidget):
         self.ui.load_pal.clicked.connect(self.load_pal)
         self.ui.preview.clicked.connect(self.view_bmp)
         self.ui.verify.clicked.connect(self.verify)
+        self.ui.auto_fix_btn.clicked.connect(self.auto_fix)
         self.ui.export_err_img.clicked.connect(self.export_error_img)
         self.bg.pos_clicked.connect(self.show_coordinate_and_char)
         self.ui.copy.returnPressed.connect(self.copy_from_original)
@@ -177,7 +185,7 @@ class MainWindow(QWidget):
             self.view_bmp()
             self.verify()
         except Exception:
-            pass
+            print(traceback.format_exc())
 
     def char_pixel_replace(self):
         if self.char_model.char is None or self.bg.bmp is None:
@@ -282,6 +290,12 @@ class MainWindow(QWidget):
             except Exception:
                 self.ui.result.setText(traceback.format_exc())
 
+    def auto_fix(self):
+        if self.bg.bmp is None:
+            return
+        self.bg.bmp.auto_fix()
+        self.verify()
+
     def verify(self):
         if self.bg.bmp is None:
             return
@@ -304,11 +318,20 @@ class MainWindow(QWidget):
         else:
             self.ui.result.setText(f'Do not found any error')
         diff = ''
+        try:
+            p_e_used = len(self.bg.bmp.palette_used())
+        except Exception:
+            p_e_used = 'ERROR'
+        try:
+            c_e = self.bg.bmp.char_count()
+        except Exception:
+            c_e = 'ERROR'
+        
         if self.cg4h is not None:
             diff += (f'Palette: original -> {self.cg4h.color_count // 16} used'
-                     f', edited -> {len(self.bg.bmp.palette_used())} used\n'
+                     f', edited -> {p_e_used} used\n'
                      f'Character: original -> {self.cg4h.char_count} chars'
-                     f', edited -> {self.bg.bmp.char_count()} chars\n')
+                     f', edited -> {c_e} chars\n')
         if self.sc4h is not None:
             diff += (
                 f'Actual size: {self.sc4h.width}x{self.sc4h.height}\n')

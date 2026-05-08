@@ -5,8 +5,12 @@ import sys
 
 from PyQt5.QtWidgets import QApplication
 
-from .graphic import Palette, BMP, CG4Header, SC4Header
-from .main_form import MainWindow
+try:
+    from .graphic import Palette, BMP, CG4Header, SC4Header
+    from .main_form import MainWindow
+except ImportError:
+    from graphic import Palette, BMP, CG4Header, SC4Header
+    from main_form import MainWindow
 
 
 if __name__ == "__main__":

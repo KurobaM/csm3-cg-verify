@@ -9,8 +9,10 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import QColor, QPixmap
 from PyQt5.QtWidgets import QWidget, QTableView, QHeaderView
 
-from .graphic import Palette
-
+try:
+    from .graphic import Palette
+except ImportError:
+    from graphic import Palette
 
 Flag = Qt.ItemFlag
 Role = Qt.ItemDataRole
@@ -88,14 +90,16 @@ class PaletteTable(QTableView):
 
     def apply_style(self):
         hh = self.horizontalHeader()
-        hh.setMinimumSectionSize(COLOR_WIDTH)
-        hh.setDefaultSectionSize(COLOR_WIDTH + 2)
+        hh.setMinimumSectionSize(COLOR_WIDTH)  # type: ignore
+        hh.setDefaultSectionSize(COLOR_WIDTH + 2)  # type: ignore
         vh = self.verticalHeader()
-        vh.setMinimumSectionSize(COLOR_HEIGHT)
-        vh.setDefaultSectionSize(COLOR_HEIGHT + 2)
+        vh.setMinimumSectionSize(COLOR_HEIGHT)  # type: ignore
+        vh.setDefaultSectionSize(COLOR_HEIGHT + 2)  # type: ignore
 
     def cell_clicked(self, index: QModelIndex):
         model = self.model()
+        if not model:
+            return
         color: tuple[int, int] | None = model.data(
             index, ColorTableModel.ColorDataRole)
         if color is not None:
@@ -181,8 +185,8 @@ class CharTable(QTableView):
 
     def apply_style(self):
         hh = self.horizontalHeader()
-        hh.setMinimumSectionSize(36)
-        hh.setDefaultSectionSize(36)
+        hh.setMinimumSectionSize(36)  # type: ignore
+        hh.setDefaultSectionSize(36)  # type: ignore
         vh = self.verticalHeader()
-        vh.setMinimumSectionSize(20)
-        vh.setDefaultSectionSize(20)
+        vh.setMinimumSectionSize(20)  # type: ignore
+        vh.setDefaultSectionSize(20)  # type: ignore

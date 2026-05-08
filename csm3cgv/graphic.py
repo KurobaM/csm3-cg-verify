@@ -189,6 +189,65 @@ class BGChar:
         return hashlib.sha256(self.to_bytes(flip)).hexdigest()
 
 
+def reduce_color(uint32_color: int, lsb: int):
+    if lsb == 0:
+        return uint32_color
+    else:
+        mask = 0x1f - (1 << lsb) + 1
+        r = round((uint32_color & 0xff) * 0x1f / 0xff) & mask
+        g = round((uint32_color >> 8 & 0xff) * 0x1f / 0xff) & mask
+        b = round((uint32_color >> 16 & 0xff) * 0x1f / 0xff) & mask
+        color16 = r | g << 5 | b << 10
+        return to_color32(color16)
+
+
+reduce = np.vectorize(reduce_color, [np.uint32])
+
+
+def get_used_color(char: np.ndarray, palette: Palette):
+    pal_map = char // 16
+    pal_id = np.unique(pal_map)
+    used_color32 = dict()
+    for x in pal_id:
+        used_color32[x] = palette.color[np.unique(char[pal_map == x])]
+    return used_color32
+
+
+def get_palette(pal_id: int, palette: Palette):
+    return palette.color[pal_id * 16: (pal_id + 1) * 16]
+
+
+def calc_suitable_pal(char: np.ndarray, palette: Palette, lsb: int):
+    pal_map = char // 16
+    pal_id = np.unique(pal_map)
+    if len(pal_id) == 1:
+        return pal_id[0]
+    used_color32 = dict()
+    all_color32 = dict()
+    if lsb == 0:
+        for x in pal_id:
+            used_color32[x] = palette.color[
+                np.unique(char[pal_map == x])]
+            all_color32[x] = palette.color[x*16: (x+1)*16]
+    else:
+        for x in pal_id:
+            used_color32[x] = reduce(palette.color[
+                np.unique(char[pal_map == x])], lsb)
+            all_color32[x] = reduce(palette.color[x*16: (x+1)*16], lsb)
+    new_id = None
+    for id in pal_id:
+        colors = all_color32[id]
+        ok = True
+        for used in used_color32.values():
+            if not np.all(np.isin(used, colors)):
+                ok = False
+                break
+        if ok:
+            new_id = id
+            break
+    return new_id
+
+
 class BMP:
     def __init__(self, path: str, palette: Palette | None = None) -> None:
         with Image.open(path) as img:
@@ -207,7 +266,7 @@ class BMP:
             else:
                 raise NotImplementedError(
                     f'Bitmap mode not supported: {img.mode}')
-        self.charset: dict[str, tuple[int, int, int]] | None = None
+        self.charset: dict[str, tuple[BGChar, int, int]] | None = None
         self.img = None
         self.error = None
         self.error_img = None
@@ -266,7 +325,7 @@ class BMP:
         if self.charset is not None:
             return len(self.charset)
         self.charset = dict()
-        chars = []
+        chars: list[BGChar] = []
         for y in range(0, self.height, 8):
             for x in range(0, self.width, 8):
                 chars.append(BGChar.from_PIL_list(
@@ -310,6 +369,34 @@ class BMP:
         for x, y in zip(col, row):
             error.append((int(x), int(y)))
         return error
+
+    def auto_fix(self):
+        if self.palette is None:
+            return
+        for y in range(0, self.height, 8):
+            for x in range(0, self.width, 8):
+                char = self.pixels[y:y+8, x:x+8]
+                lsb = 0
+                new_id = calc_suitable_pal(char, self.palette, lsb)
+                if new_id is None:
+                    lsb = 1
+                    new_id = calc_suitable_pal(char, self.palette, lsb)
+                if new_id is None:
+                    continue
+                useds = get_used_color(char, self.palette)
+                colors = reduce(get_palette(new_id, self.palette), lsb)
+                for id in useds:
+                    old_pal = reduce(get_palette(id, self.palette), lsb)
+                    if id == new_id:
+                        continue
+                    for v in useds[id]:
+                        c = reduce_color(v, lsb)
+                        old_idx = np.where(old_pal == c)[0][0] + 16 * id
+                        idx = np.where(colors == c)[0][0] + 16 * new_id
+                        char[char == old_idx] = idx
+                self.pixels[y:y+8, x:x+8] = char
+        self.error = None
+        self.error_img = None
 
     def generate_error_map(self):
         err: list[tuple[bool, tuple[int, int], list[tuple[int, int]]]] = []
