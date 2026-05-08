@@ -107,6 +107,8 @@ class PaletteTable(QTableView):
 
 
 class CharDetailModel(QAbstractTableModel):
+    DataRole = Role.UserRole + 1
+
     def __init__(self, data: np.ndarray | None,
                  parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -147,6 +149,8 @@ class CharDetailModel(QAbstractTableModel):
         try:
             if role == Role.DisplayRole or role == Role.EditRole:
                 return str(self.char[row, col])
+            elif role == CharDetailModel.DataRole:
+                return int(self.char[row, col])
             else:
                 return None
         except IndexError:
@@ -179,8 +183,11 @@ class CharDetailModel(QAbstractTableModel):
 
 
 class CharTable(QTableView):
+    pal_id_selected = pyqtSignal(int)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.clicked.connect(self.cell_clicked)
         self.apply_style()
 
     def apply_style(self):
@@ -190,3 +197,11 @@ class CharTable(QTableView):
         vh = self.verticalHeader()
         vh.setMinimumSectionSize(20)  # type: ignore
         vh.setDefaultSectionSize(20)  # type: ignore
+
+    def cell_clicked(self, index: QModelIndex):
+        model = self.model()
+        if not model:
+            return
+        idx: int | None = model.data(index, CharDetailModel.DataRole)
+        if idx is not None:
+            self.pal_id_selected.emit(idx)

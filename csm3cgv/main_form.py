@@ -19,7 +19,7 @@ try:
     from .model import ColorTableModel, CharDetailModel
 except ImportError:
     from graphic import (Palette, BMP, CG4Header, SC4Header,
-                          BGLayer, to_color16, to_color32)
+                         BGLayer, to_color16, to_color32)
     from main_ui import Ui_Form
     from model import ColorTableModel, CharDetailModel
 
@@ -51,6 +51,7 @@ class MainWindow(QWidget):
         self.ui.set_color.returnPressed.connect(self.change_color)
         self.ui.btn_save.clicked.connect(self.save_img)
         self.ui.tbl_pal.color_clicked.connect(self.color_selected)
+        self.ui.tbl_char.pal_id_selected.connect(self.select_pal_id)
         self.ui.zoom.valueChanged.connect(self.set_zoom)
         self.ui.load_bmp.clicked.connect(self.load_bmp)
         self.ui.load_bmp_o.clicked.connect(self.load_bmp_o)
@@ -244,6 +245,11 @@ class MainWindow(QWidget):
         except Exception:
             pass
 
+    def select_pal_id(self, value: int):
+        if not self.bg.bmp or not self.bg.bmp.palette:
+            return
+        self.color_selected((value, self.bg.bmp.palette.color[value]))
+
     def color_selected(self, value: tuple[int, int]):
         if not self.bg.bmp or not self.bg.bmp.palette:
             return
@@ -326,7 +332,7 @@ class MainWindow(QWidget):
             c_e = self.bg.bmp.char_count()
         except Exception:
             c_e = 'ERROR'
-        
+
         if self.cg4h is not None:
             diff += (f'Palette: original -> {self.cg4h.color_count // 16} used'
                      f', edited -> {p_e_used} used\n'
