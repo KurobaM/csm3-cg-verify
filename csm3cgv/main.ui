@@ -470,14 +470,14 @@ p, li { white-space: pre-wrap; }
            <widget class="QLabel" name="label_char_pm">
             <property name="minimumSize">
              <size>
-              <width>48</width>
-              <height>48</height>
+              <width>64</width>
+              <height>64</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
-              <width>48</width>
-              <height>48</height>
+              <width>64</width>
+              <height>64</height>
              </size>
             </property>
             <property name="text">

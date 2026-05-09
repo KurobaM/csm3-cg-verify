@@ -7,7 +7,7 @@ import os
 import traceback
 
 import numpy as np
-from PyQt5.QtCore import Qt, QRect
+from PyQt5.QtCore import Qt, QRect, QItemSelectionModel
 from PyQt5.QtGui import (QCloseEvent, QImage, QKeyEvent, QPixmap,
                          QPainter, QIcon, QColor)
 from PyQt5.QtWidgets import QWidget, QFileDialog, QListWidgetItem, QListWidget
@@ -114,7 +114,7 @@ class MainWindow(QWidget):
         if self.char_model.char is not None and self.bg.bmp is not None:
             self.ui.label_char_pm.setPixmap(
                 self.bg.bmp.generate_char_pixmap_from_char(
-                    self.char_model.char, 6))
+                    self.char_model.char, 8))
 
     def export_error_img(self):
         if self.bg.bmp is None:
@@ -162,10 +162,14 @@ class MainWindow(QWidget):
             char = self.bg.bmp.pixels[y:y+8, x:x+8]
             self.selected_char = (x, y)
             self.char_model.update(char)
+            model = self.ui.tbl_char.model()
+            if model:
+                index = model.index(pos[1] % 8, pos[0] % 8)
+                self.ui.tbl_char.setCurrentIndex(index)
             self.ui.label_char.setText(
                 f'Selected character: {x // 8 + y // 8 * w // 8}')
             self.ui.label_char_pm.setPixmap(
-                self.bg.bmp.generate_char_pixmap(x, y, 6))
+                self.bg.bmp.generate_char_pixmap(x, y, 8))
 
     def copy_from_original(self):
         if not self.bg.bmp or not self.bmp_o:
