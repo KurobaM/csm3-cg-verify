@@ -321,41 +321,33 @@ class MainWindow(QWidget):
             for x in similar]
         self.similar = [x for x in similar]
 
-        samples = {x.id: x
-                   for x in self.similar_or_major}
         if self.char_model.char is not None and self.selected_char is not None:
             major_pal = calc_major_pal(self.char_model.char)
             colors = self.bg.bmp.palette.color[major_pal*16: (major_pal+1)*16]
             for i in range(0, len(colors)):
                 ci = ColorInfo(major_pal*16+i, int(colors[i]))
-                samples[major_pal*16+i] = ci
                 self.similar_or_major.append(ci)
-
+        ref = ColorInfo(value[0], int(value[1]))
         for v in self.similar_or_major:
-            v.set_ref_color(value[1])
+            v.set_ref_color(ref)
         self.similar_or_major = sorted(self.similar_or_major)
+
+        samples = {v.id: v for v in self.similar_or_major}
 
         self.ui.swap.clear()
         self.ui.swap.addItems([str(int(x.id))
-                              for x in sorted(self.similar_or_major)])
+                              for x in self.similar_or_major])
 
-        ccolor = QColor(r, g, b)
         self.ui.list_color.clear()
         keys = sorted(samples.keys())
         for idx in keys:
-            sr, sg, sb, _ = (x for x in
-                             int.to_bytes(int(samples[idx].value), 4, 'little'))
-            color = QColor(sr, sg, sb)
-            item = QListWidgetItem(f'{value[0]}: {idx}')
-            pm = QPixmap(48, 48)
-            pm.fill(color)
-            pt = QPainter(pm)
-            pt.fillRect(QRect(0, 0, 24, 48), ccolor)
-            pt.end()
-            ico = QIcon(pm)
+            item = QListWidgetItem(
+                f'{value[0]}: {idx}\nΔ{float(samples[idx].d_E):.1f}')
+            ico = QIcon(samples[idx].pm)
             item.setIcon(ico)
             self.ui.list_color.addItem(item)
-        similar_txt = [similar[x: x + 10] for x in range(0, len(similar), 10)]
+        similar_txt = [similar[x: x + 10]
+                       for x in range(0, len(similar), 10)]
         lines = []
         for line in similar_txt:
             lines.append(', '.join([str(x) for x in line]) + ',')

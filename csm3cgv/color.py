@@ -3,6 +3,8 @@ from enum import Enum
 
 import numpy as np
 from numpy.typing import NDArray
+from PyQt5.QtCore import Qt, QRect
+from PyQt5.QtGui import QPixmap, QPainter, QColor
 
 
 def rgb_to_xyz(r: float, g: float, b: float) -> NDArray[np.float64]:
@@ -74,12 +76,22 @@ class ColorInfo:
     def __init__(self, id: int, rgb32: int) -> None:
         self.id = id
         self.value = rgb32
-        self.d_E = None
+        self.d_E: float = -1.0
+        self.ref = None
+        color = QColor(*(x for x in int.to_bytes(rgb32, 4, 'little')))
+        self.pm = QPixmap(48, 48)
+        self.pm.fill(color)
 
-    def set_ref_color(self, color32: int):
-        lab_ref = rgb_to_lab(color32)
+    def set_ref_color(self, ref: ColorInfo):
+        lab_ref = rgb_to_lab(ref.value)
         lab = rgb_to_lab(self.value)
         self.d_E = cie94_diff(lab, lab_ref)
+        self.ref = ref
+        pt = QPainter(self.pm)
+        pt.fillRect(
+            QRect(0, 0, 24, 48),
+            QColor(*(x for x in int.to_bytes(ref.value, 4, 'little'))))
+        pt.end()
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, ColorInfo):
@@ -90,18 +102,18 @@ class ColorInfo:
         return not self.__eq__(other)
 
     def __lt__(self, other: ColorInfo) -> bool:
-        if self.d_E is None:
+        if self.d_E < 0:
             lab_ref = rgb_to_lab(0)
             lab = rgb_to_lab(self.value)
             d_E = cie94_diff(lab, lab_ref)
-            if other.d_E is None:
+            if other.d_E < 0:
                 lab_o = rgb_to_lab(other.value)
                 d_E_o = cie94_diff(lab_o, lab_ref)
             else:
                 d_E_o = other.d_E
             return d_E < d_E_o
         else:
-            if other.d_E is None:
+            if other.d_E < 0:
                 lab_ref = rgb_to_lab(0)
                 lab_o = rgb_to_lab(other.value)
                 d_E_o = cie94_diff(lab_o, lab_ref)
