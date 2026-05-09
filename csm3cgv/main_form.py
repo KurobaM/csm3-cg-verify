@@ -18,11 +18,13 @@ try:
                           BGLayer, to_color16, to_color32, calc_major_pal,)
     from .main_ui import Ui_Form
     from .model import ColorTableModel, CharDetailModel
+    from .color import cie94_diff, rgb_to_lab, ColorInfo
 except ImportError:
     from graphic import (Palette, BMP, CG4Header, SC4Header,
                          BGLayer, to_color16, to_color32, calc_major_pal)
     from main_ui import Ui_Form
     from model import ColorTableModel, CharDetailModel
+    from color import cie94_diff, rgb_to_lab, ColorInfo
 
 
 class MainWindow(QWidget):
@@ -40,7 +42,7 @@ class MainWindow(QWidget):
         self.zoom_factor = 1
         self.selected_char = None
         self.selected_color: tuple[int, int] | None = None
-        self.similar_or_major: list[int] | None = None
+        self.similar_or_major: list[ColorInfo] | None = None
         self.similar: list[int] | None = None
         self.pal_model = ColorTableModel(None)
         self.char_model = CharDetailModel(None)
@@ -314,27 +316,35 @@ class MainWindow(QWidget):
         g5 = round(g * 0x1f / 0xff)
         b5 = round(b * 0x1f / 0xff)
         similar = sorted(list(map[idx]))
-        self.similar_or_major = [x for x in similar]
+        self.similar_or_major = [
+            ColorInfo(x, int(self.bg.bmp.palette.color[x]))
+            for x in similar]
         self.similar = [x for x in similar]
 
-        samples = {x: int(self.bg.bmp.palette.color[x])
+        samples = {x.id: x
                    for x in self.similar_or_major}
         if self.char_model.char is not None and self.selected_char is not None:
             major_pal = calc_major_pal(self.char_model.char)
             colors = self.bg.bmp.palette.color[major_pal*16: (major_pal+1)*16]
             for i in range(0, len(colors)):
-                samples[major_pal*16+i] = int(colors[i])
-                self.similar_or_major.append(major_pal*16+i)
+                ci = ColorInfo(major_pal*16+i, int(colors[i]))
+                samples[major_pal*16+i] = ci
+                self.similar_or_major.append(ci)
+
+        for v in self.similar_or_major:
+            v.set_ref_color(value[1])
+        self.similar_or_major = sorted(self.similar_or_major)
 
         self.ui.swap.clear()
-        self.ui.swap.addItems([str(int(x)) for x in self.similar_or_major])
+        self.ui.swap.addItems([str(int(x.id))
+                              for x in sorted(self.similar_or_major)])
 
         ccolor = QColor(r, g, b)
         self.ui.list_color.clear()
         keys = sorted(samples.keys())
         for idx in keys:
             sr, sg, sb, _ = (x for x in
-                             int.to_bytes(int(samples[idx]), 4, 'little'))
+                             int.to_bytes(int(samples[idx].value), 4, 'little'))
             color = QColor(sr, sg, sb)
             item = QListWidgetItem(f'{value[0]}: {idx}')
             pm = QPixmap(48, 48)
