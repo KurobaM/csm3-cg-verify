@@ -217,6 +217,15 @@ def get_palette(pal_id: int, palette: Palette):
     return palette.color[pal_id * 16: (pal_id + 1) * 16]
 
 
+def calc_major_pal(char: np.ndarray):
+    pal_map = char // 16
+    pal_id, count = np.unique(pal_map, return_counts=True)
+    if len(pal_id) == 1:
+        return pal_id[0]
+    major_id = pal_id[count == count.max()][0]
+    return major_id
+
+
 def calc_suitable_pal(char: np.ndarray, palette: Palette, lsb: int):
     pal_map = char // 16
     pal_id = np.unique(pal_map)
@@ -377,13 +386,40 @@ class BMP:
             for x in range(0, self.width, 8):
                 char = self.pixels[y:y+8, x:x+8]
                 lsb = 0
+                useds = get_used_color(char, self.palette)
                 new_id = calc_suitable_pal(char, self.palette, lsb)
                 if new_id is None:
                     lsb = 1
                     new_id = calc_suitable_pal(char, self.palette, lsb)
                 if new_id is None:
+                    major_id = calc_major_pal(char)
+                    ma_pal = get_palette(major_id, self.palette)
+                    change = False
+                    for id in useds:
+                        mi_pal = get_palette(id, self.palette)
+                        if id == major_id:
+                            continue
+                        for v in useds[id]:
+                            mi_idx = np.where(mi_pal == v)[0][0] + 16 * id
+                            result = np.where(ma_pal == v)
+                            stop = len(result) > 0
+                            lsb_m = 1
+                            while not stop:
+                                rv = reduce_color(v, lsb_m)
+                                r_colors = reduce(ma_pal, lsb_m)
+                                result = np.where(r_colors == rv)
+                                stop = len(result[0]) > 0
+                                lsb_m += 1
+                                if lsb_m > 2:
+                                    stop = True
+                            if len(result[0]) != 0:
+                                ma_idx = result[0][0] + 16 * id
+                                char[char == mi_idx] = ma_idx
+                                change = True
+                    if change:
+                        self.pixels[y:y+8, x:x+8] = char
                     continue
-                useds = get_used_color(char, self.palette)
+
                 colors = reduce(get_palette(new_id, self.palette), lsb)
                 for id in useds:
                     old_pal = reduce(get_palette(id, self.palette), lsb)
@@ -425,6 +461,16 @@ class BMP:
 
     def get_char(self, x: int, y: int):
         return self.pixels[y:y+8, x:x+8]
+
+    def generate_char_pixmap_from_char(self, char: np.ndarray,
+                                       zoom_factor: int):
+        if self.palette is None:
+            raise ValueError('No Palette')
+        img = self.palette.color[char]
+        zoomed = zoom(img, zoom_factor)
+        qimg = QImage(zoomed.tobytes(), 8 * zoom_factor, 8 * zoom_factor,
+                      QImage.Format.Format_RGBA8888)
+        return QPixmap.fromImage(qimg)
 
     def generate_char_pixmap(self, x: int, y: int, zoom_factor: int):
         if self.palette is None:

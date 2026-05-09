@@ -108,6 +108,7 @@ class PaletteTable(QTableView):
 
 class CharDetailModel(QAbstractTableModel):
     DataRole = Role.UserRole + 1
+    data_changed = pyqtSignal()
 
     def __init__(self, data: np.ndarray | None,
                  parent: QObject | None = None) -> None:
@@ -176,6 +177,7 @@ class CharDetailModel(QAbstractTableModel):
                 self.char[row, col] = np.uint8(int(value))
                 self.dataChanged.emit(
                     index, index, [Role.DisplayRole, Role.EditRole])
+                self.data_changed.emit()
                 return True
             except Exception:
                 return False

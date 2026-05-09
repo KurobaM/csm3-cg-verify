@@ -7,19 +7,20 @@ import os
 import traceback
 
 import numpy as np
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QCloseEvent, QImage, QKeyEvent
-from PyQt5.QtWidgets import (QWidget, QFileDialog)
+from PyQt5.QtCore import Qt, QRect
+from PyQt5.QtGui import (QCloseEvent, QImage, QKeyEvent, QPixmap,
+                         QPainter, QIcon, QColor)
+from PyQt5.QtWidgets import QWidget, QFileDialog, QListWidgetItem, QListWidget
 
 
 try:
     from .graphic import (Palette, BMP, CG4Header, SC4Header,
-                          BGLayer, to_color16, to_color32)
+                          BGLayer, to_color16, to_color32, calc_major_pal,)
     from .main_ui import Ui_Form
     from .model import ColorTableModel, CharDetailModel
 except ImportError:
     from graphic import (Palette, BMP, CG4Header, SC4Header,
-                         BGLayer, to_color16, to_color32)
+                         BGLayer, to_color16, to_color32, calc_major_pal)
     from main_ui import Ui_Form
     from model import ColorTableModel, CharDetailModel
 
@@ -39,6 +40,8 @@ class MainWindow(QWidget):
         self.zoom_factor = 1
         self.selected_char = None
         self.selected_color: tuple[int, int] | None = None
+        self.similar_or_major: list[int] | None = None
+        self.similar: list[int] | None = None
         self.pal_model = ColorTableModel(None)
         self.char_model = CharDetailModel(None)
         self.ui.tbl_pal.setModel(self.pal_model)
@@ -61,9 +64,12 @@ class MainWindow(QWidget):
         self.ui.preview.clicked.connect(self.view_bmp)
         self.ui.verify.clicked.connect(self.verify)
         self.ui.auto_fix_btn.clicked.connect(self.auto_fix)
+        self.ui.swap.activated.connect(self.swap_all)
         self.ui.export_err_img.clicked.connect(self.export_error_img)
         self.bg.pos_clicked.connect(self.show_coordinate_and_char)
         self.ui.copy.returnPressed.connect(self.copy_from_original)
+        self.char_model.data_changed.connect(self.update_char_pm)
+        self.ui.list_color.setViewMode(QListWidget.ViewMode.IconMode)
 
     def ui_setup(self):
         self.ui.frame_orig_file.setVisible(False)
@@ -103,6 +109,12 @@ class MainWindow(QWidget):
                 json.dump(config, file)
         except Exception:
             return
+
+    def update_char_pm(self):
+        if self.char_model.char is not None and self.bg.bmp is not None:
+            self.ui.label_char_pm.setPixmap(
+                self.bg.bmp.generate_char_pixmap_from_char(
+                    self.char_model.char, 6))
 
     def export_error_img(self):
         if self.bg.bmp is None:
@@ -245,6 +257,27 @@ class MainWindow(QWidget):
         except Exception:
             pass
 
+    def swap_all(self):
+        if not self.similar:
+            return
+        try:
+            value = int(self.ui.swap.currentText())
+        except Exception:
+            return
+        if self.char_model is None or not self.bg.bmp or not self.selected_char:
+            return
+        if self.ui.checkBox.isChecked():
+            for v in self.similar:
+                if value != v:
+                    self.bg.bmp.pixels[
+                        self.bg.bmp.pixels == np.uint8(v)] = np.uint8(value)
+        else:
+            values = []
+            for v in self.similar:
+                if value != v:
+                    values.append((v, value))
+            self.char_model.replace(values)
+
     def select_pal_id(self, value: int):
         if not self.bg.bmp or not self.bg.bmp.palette:
             return
@@ -277,9 +310,40 @@ class MainWindow(QWidget):
         g5 = round(g * 0x1f / 0xff)
         b5 = round(b * 0x1f / 0xff)
         similar = sorted(list(map[idx]))
-        similar = [similar[x: x + 10] for x in range(0, len(similar), 10)]
+        self.similar_or_major = [x for x in similar]
+        self.similar = [x for x in similar]
+
+        samples = {x: int(self.bg.bmp.palette.color[x])
+                   for x in self.similar_or_major}
+        if self.char_model.char is not None and self.selected_char is not None:
+            major_pal = calc_major_pal(self.char_model.char)
+            colors = self.bg.bmp.palette.color[major_pal*16: (major_pal+1)*16]
+            for i in range(0, len(colors)):
+                samples[major_pal*16+i] = int(colors[i])
+                self.similar_or_major.append(major_pal*16+i)
+
+        self.ui.swap.clear()
+        self.ui.swap.addItems([str(int(x)) for x in self.similar_or_major])
+
+        ccolor = QColor(r, g, b)
+        self.ui.list_color.clear()
+        keys = sorted(samples.keys())
+        for idx in keys:
+            sr, sg, sb, _ = (x for x in
+                             int.to_bytes(int(samples[idx]), 4, 'little'))
+            color = QColor(sr, sg, sb)
+            item = QListWidgetItem(f'{value[0]}: {idx}')
+            pm = QPixmap(48, 48)
+            pm.fill(color)
+            pt = QPainter(pm)
+            pt.fillRect(QRect(0, 0, 24, 48), ccolor)
+            pt.end()
+            ico = QIcon(pm)
+            item.setIcon(ico)
+            self.ui.list_color.addItem(item)
+        similar_txt = [similar[x: x + 10] for x in range(0, len(similar), 10)]
         lines = []
-        for line in similar:
+        for line in similar_txt:
             lines.append(', '.join([str(x) for x in line]) + ',')
         similar_s = '{'+'\n         '.join(lines) + '}'
 
