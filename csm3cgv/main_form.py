@@ -370,6 +370,11 @@ class MainWindow(QWidget):
         if self.bg.bmp is None:
             return
         self.bg.bmp.auto_fix()
+        self.bg.bmp.img = None
+        self.bg.bmp.error_img = None
+        self.bg.bmp.charset = None
+        self.bg.bmp.error = None
+        self.view_bmp()
         self.verify()
 
     def verify(self):
@@ -381,6 +386,10 @@ class MainWindow(QWidget):
         if not self.ui.pal_check.isChecked():
             self.palette_data = None
         try:
+            self.bg.bmp.img = None
+            self.bg.bmp.error_img = None
+            self.bg.bmp.charset = None
+            self.bg.bmp.error = None
             self.bg.set_error_image()
         except Exception:
             self.ui.result.setText(traceback.format_exc())
@@ -495,6 +504,8 @@ class MainWindow(QWidget):
             self.orig_dir = os.path.dirname(path)
             with open(path, 'rb') as f:
                 data = f.read()
+            if '.lz77' in path:
+                data = LZ77_Decompress(data)
             self.cg4h = CG4Header(data)
             self.ui.cg4.setText(path)
         except Exception as e:
@@ -513,6 +524,8 @@ class MainWindow(QWidget):
             self.orig_dir = os.path.dirname(path)
             with open(path, 'rb') as f:
                 data = f.read()
+            if '.lz77' in path:
+                data = LZ77_Decompress(data)
             self.sc4h = SC4Header(data)
             self.ui.sc4.setText(path)
         except Exception as e:
@@ -524,3 +537,198 @@ class MainWindow(QWidget):
             self.apply_char_change()
             return event.accept()
         return super().keyPressEvent(event)
+
+
+def LZ77_Decompress(data: bytes):
+    ''' LZ77 compressed data
+        Header:
+            0x10 - lz77 compressed file magic
+            XX YY ZZ: 3 bytes original file size
+        Data:
+            1 byte -> 8 × 1bit flag: b8 ... b1
+                flag: 0 -> copy byte data
+                      1 -> copy (length + 3) bytes from out buffer
+                           at minus (distance + 1) from current index
+            8 × (1 byte data or 2 bytes code):
+                code: XY ZT -> 4bit length X
+                            -> 12bit distance Y ZT
+    '''
+    header = data[:4]
+    if header[0] != 0x10:
+        raise ValueError('Not LZ77 compressed data')
+    size = (header[3] << 16) + (header[2] << 8) + header[1]
+    out = bytearray(size)
+    idx = 4
+    out_index = 0
+    while out_index < size:
+        flag = data[idx]
+        for i in range(0, 8):
+            if not (flag & 0x80):
+                out[out_index] = data[idx + 1]
+                out_index += 1
+                idx += 1
+            else:
+                length = (data[idx + 1] >> 4) + 3
+                distance = 1 + (((data[idx + 1] & 0xf) << 8) | data[idx + 2])
+                idx += 2
+                for i in range(0, length):
+                    out[out_index + i] = out[out_index + i - distance]
+                out_index = out_index + length
+            if (out_index >= size):
+                break
+            flag = (flag << 1) & 0xff
+        idx = idx + 1
+    return bytes(out)
+
+
+def LZ77_Compress(data: bytes, window_size: int = 2):
+    '''
+    window_size: minimum size of search window
+    '''
+    size = len(data)
+    out = bytearray(size * 2 + 1024)  # alloc large enough buffer
+    out[:4] = int.to_bytes((size << 8) | 0x10, 4, 'little')
+    out_idx = 4
+    idx = 0
+    while idx < size:
+        flag = 0
+        flag_idx = out_idx
+        out_idx += 1
+        for _ in range(0, 8):
+            flag *= 2
+            current_dist = window_size
+            distance = 0
+            match_length = 0
+            while (
+                current_dist <= idx
+                and current_dist <= 4096
+                and idx < size
+            ):
+                if data[idx - current_dist] == data[idx]:
+                    current_match_length = 1
+                    j = 1
+                    while current_match_length < 18:
+                        try:
+                            if data[idx + j - current_dist] == data[idx + j]:
+                                current_match_length += 1
+                                j += 1
+                            else:
+                                break
+                        except IndexError:
+                            break
+                    if (
+                        current_match_length >= 3
+                        and current_match_length > match_length
+                    ):
+                        distance = current_dist
+                        match_length = current_match_length
+                        flag |= 1
+                current_dist += 1
+            if (idx < size):
+                if flag & 1:
+                    out[out_idx] = (
+                        ((match_length - 3) << 4)
+                        | (((distance - 1) & 0x0fff) >> 8)
+                    )
+                    out[out_idx + 1] = (distance - 1) & 0xff
+                    out_idx += 2
+                    idx += match_length
+                else:
+                    out[out_idx] = data[idx]
+                    idx += 1
+                    out_idx += 1
+        out[flag_idx] = flag
+    # Zero padding 32 bit aligned
+    out_idx += 4 - out_idx % 4 if out_idx % 4 else 0
+    return bytes(out[:out_idx])
+
+
+def RL_Decompress(data: bytes):
+    ''' RL compressed data
+        Header:
+            0x30 - rl compressed file magic
+            XX YY ZZ: 3 bytes original file size
+        Data:
+            1 byte block header:
+                MSB -> flag: 0 -> copy, 1 -> expand
+                7 bit -> length:
+                    flag = 0 -> copy next (length + 1) bytes
+                    flag = 1 -> expand next byte by (length + 3)
+            ... bytes data
+    '''
+    header = data[:4]
+    if header[0] != 0x30:
+        raise ValueError('Not RL compressed data')
+    size = (header[3] << 16) + (header[2] << 8) + header[1]
+    out = bytearray(size)
+    idx = 4
+    out_idx = 0
+    while out_idx < size:
+        block_header = data[idx]
+        flag = block_header & 0x80
+        length = block_header & 0x7f
+        if not flag:
+            for _ in range(0, length + 1):
+                idx += 1
+                out[out_idx] = data[idx]
+                out_idx += 1
+        else:
+            idx += 1
+            for _ in range(0, length + 3):
+                out[out_idx] = data[idx]
+                out_idx += 1
+        idx += 1
+    return bytes(out)
+
+
+def RL_Compress(data: bytes):
+    size = len(data)
+    out = bytearray(size * 2 + 1024)  # alloc large enough buffer
+    out[:4] = int.to_bytes((size << 8) | 0x30, 4, 'little')
+    out_idx = 4
+    idx = 0
+    while idx < size:
+        # Find index of consecutive sequence
+        found = False
+        found_idx = 0
+        while (found_idx + idx) < size:
+            try:
+                if (
+                    data[idx + found_idx]
+                    == data[idx + found_idx + 1]
+                    == data[idx + found_idx + 2]
+                ):
+                    found = True
+                    break
+            except IndexError:
+                pass
+            found_idx += 1
+            if found_idx >= 128:
+                break
+        # Write incompressible sequence
+        if found_idx:
+            out[out_idx] = found_idx - 1
+            out_idx += 1
+            for _ in range(0, found_idx):
+                out[out_idx] = data[idx]
+                out_idx += 1
+                idx += 1
+        # Write compressible sequence
+        if found:
+            count = 3
+            while count < 130:
+                try:
+                    if data[idx + count] == data[idx]:
+                        count += 1
+                    else:
+                        break
+                except IndexError:
+                    break
+            out[out_idx] = (count - 3) | 0x80
+            out_idx += 1
+            out[out_idx] = data[idx]
+            out_idx += 1
+            idx += count
+    # Zero padding 32 bit aligned
+    out_idx += 4 - out_idx % 4 if out_idx % 4 else 0
+    return bytes(out[:out_idx])
