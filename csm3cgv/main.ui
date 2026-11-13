@@ -73,7 +73,7 @@
              <item>
               <widget class="QPushButton" name="load_bmp">
                <property name="text">
-                <string>Load BMP</string>
+                <string>Load .BMP</string>
                </property>
               </widget>
              </item>
@@ -89,7 +89,7 @@
            <item>
             <widget class="QCheckBox" name="orig_check">
              <property name="text">
-              <string>Have original file</string>
+              <string>Use the original file</string>
              </property>
             </widget>
            </item>
@@ -140,7 +140,7 @@
                 <item>
                  <widget class="QPushButton" name="load_bmp_o">
                   <property name="text">
-                   <string>Load original BMP</string>
+                   <string>Load original .BMP</string>
                   </property>
                  </widget>
                 </item>
@@ -157,7 +157,7 @@
                 <item>
                  <widget class="QLabel" name="label_8">
                   <property name="text">
-                   <string>Copy char from original</string>
+                   <string>Copy OG .BMP block</string>
                   </property>
                  </widget>
                 </item>
@@ -176,7 +176,7 @@
            <item>
             <widget class="QCheckBox" name="pal_check">
              <property name="text">
-              <string>Have palette file</string>
+              <string>Use a palette file (.pal)</string>
              </property>
             </widget>
            </item>
@@ -195,7 +195,7 @@
               <item row="0" column="0">
                <widget class="QPushButton" name="load_pal">
                 <property name="text">
-                 <string>Load PAL</string>
+                 <string>Load .PAL</string>
                 </property>
                </widget>
               </item>
@@ -636,12 +636,12 @@ p, li { white-space: pre-wrap; }
          <item>
           <widget class="QLabel" name="label_char">
            <property name="text">
-            <string>Selected character:</string>
+            <string>Selected Block:</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="CharTable" name="tbl_char"/>
+          <widget class="BlockTable" name="tbl_char"/>
          </item>
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_13">
@@ -695,7 +695,7 @@ p, li { white-space: pre-wrap; }
            <item>
             <widget class="QCheckBox" name="checkBox">
              <property name="text">
-              <string>All char</string>
+              <string>All blocks</string>
              </property>
             </widget>
            </item>
