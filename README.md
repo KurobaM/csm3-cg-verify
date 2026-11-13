@@ -10,7 +10,7 @@ Help with verify modded cg of before import
 
 When installing python make sure you tick the box that says to add Python to PATH or include python in PATH etc
 
-After you do that simply run install.bat and when that finishes run launch .bat
+After you do that simply run install.bat and when that finishes run launch.bat
 
 If you use Linux IDK figure it out on your own lol
 
