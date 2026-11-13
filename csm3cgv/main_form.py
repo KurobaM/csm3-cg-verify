@@ -67,7 +67,7 @@ class MainWindow(QWidget):
         self.ui.verify.clicked.connect(self.verify)
         self.ui.auto_fix_btn.clicked.connect(self.auto_fix)
         self.ui.swap.activated.connect(self.swap_all)
-        self.ui.export_err_img.clicked.connect(self.export_error_img)
+        self.ui.export_err_img.clicked.connect(self.export__img)
         self.bg.pos_clicked.connect(self.show_coordinate_and_char)
         self.ui.copy.returnPressed.connect(self.copy_from_original)
         self.char_model.data_changed.connect(self.update_char_pm)
@@ -118,7 +118,7 @@ class MainWindow(QWidget):
                 self.bg.bmp.generate_char_pixmap_from_char(
                     self.char_model.char, 8))
 
-    def export_error_img(self):
+    def export__img(self):
         if self.bg.bmp is None:
             return
         if self.working_dir is None:
@@ -126,7 +126,7 @@ class MainWindow(QWidget):
         else:
             folder = self.working_dir
         try:
-            mask = self.bg.bmp.create_error_mask()
+            mask = self.bg.bmp.create__mask()
             img = QImage(mask.tobytes(), self.bg.bmp.width, self.bg.bmp.height,
                          QImage.Format.Format_RGBA8888)
             path, _ = QFileDialog.getSaveFileName(
@@ -149,7 +149,7 @@ class MainWindow(QWidget):
             path, _ = QFileDialog.getSaveFileName(
                 self, 'Save BMP', folder, 'BMP image (*.bmp)')
             self.bg.bmp.save(path)
-            self.ui.result.setText('Image saved successfully')
+            self.ui.result.setText('Image saved successfully!')
         except Exception:
             self.ui.result.setText(traceback.format_exc())
 
@@ -198,9 +198,9 @@ class MainWindow(QWidget):
                 self.bg.bmp.pixels[y:y+8, x:x+8] = pixels
 
             self.bg.bmp.img = None
-            self.bg.bmp.error_img = None
+            self.bg.bmp._img = None
             self.bg.bmp.charset = None
-            self.bg.bmp.error = None
+            self.bg.bmp. = None
             self.view_bmp()
             self.verify()
         except Exception:
@@ -220,7 +220,7 @@ class MainWindow(QWidget):
                     continue
                 try:
                     values.append((int(k), int(v)))
-                except ValueError:
+                except Value:
                     pass
             if self.ui.checkBox.isChecked():
                 for k, v in values:
@@ -241,9 +241,9 @@ class MainWindow(QWidget):
         x, y = self.selected_char
         self.bg.bmp.pixels[y: y+8, x: x+8] = char
         self.bg.bmp.img = None
-        self.bg.bmp.error_img = None
+        self.bg.bmp._img = None
         self.bg.bmp.charset = None
-        self.bg.bmp.error = None
+        self.bg.bmp. = None
         self.view_bmp()
         self.verify()
 
@@ -371,9 +371,9 @@ class MainWindow(QWidget):
             return
         self.bg.bmp.auto_fix()
         self.bg.bmp.img = None
-        self.bg.bmp.error_img = None
+        self.bg.bmp._img = None
         self.bg.bmp.charset = None
-        self.bg.bmp.error = None
+        self.bg.bmp. = None
         self.view_bmp()
         self.verify()
 
@@ -387,21 +387,22 @@ class MainWindow(QWidget):
             self.palette_data = None
         try:
             self.bg.bmp.img = None
-            self.bg.bmp.error_img = None
+            self.bg.bmp._img = None
             self.bg.bmp.charset = None
-            self.bg.bmp.error = None
-            self.bg.set_error_image()
+            self.bg.bmp. = None
+            self.bg.set__image()
         except Exception:
             self.ui.result.setText(traceback.format_exc())
             return
-        err = self.bg.bmp.error
+        err = self.bg.bmp.
         if err:
             self.ui.result.setText(
-                f'Found {len(err)} character(s) with error.\n'
-                'R: >16 colors, G: only have palette error, \n'
-                'B: pixels of minor color palettes')
+                f'Found {len(err)} character(s) with errors.\n'
+                'R= More than 16 colors\n'
+                'G= Palette errors\n'
+                'B= Pixels use the wrong color palette')
         else:
-            self.ui.result.setText(f'Do not found any error')
+            self.ui.result.setText(f'No errors found!')
         diff = ''
         try:
             p_e_used = len(self.bg.bmp.palette_used())
